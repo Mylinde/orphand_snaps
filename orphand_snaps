@@ -7,7 +7,7 @@
 #-------------------------------------------------------------------------------
 
 orphan=$(snap connections --all | grep 'content' | grep -v 'themes' | grep -v 'slot' | awk '$2 == "-" {print $3}' | cut -d: -f1)
-provider=$(sudo find /snap -name "snap.yaml" | while read i; do grep -E "default-provider:" "$i" | cut -d: -f2; done)
+provider=$(find /snap -name "snap.yaml" | while read i; do grep -E "default-provider:" "$i" | cut -d: -f2; done)
 plug=$(snap connections $orphan | grep 'content' | awk '$2!= "-" {print $2}' | cut -d: -f1)
 
 if [ -z "$orphan" ]; then
