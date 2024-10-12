@@ -12,7 +12,7 @@ plug=$(snap connections $orphan | grep 'content' | awk '$2!= "-" {print $2}' | c
 
 if [ -z "$orphan" ]; then
     echo "No orphaned snaps found" 
-  elif [[ $provider =~ $orphan ]]; then    
+  elif [ $provider =~ $orphan ]; then    
       echo "Snap $orphan has no dependencies, but it is the default provider for snap $plug and therefore cannot be uninstalled."
     else
       sudo snap remove $orphan
