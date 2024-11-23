@@ -6,14 +6,34 @@
 # Copyright (c) 2024 Mario Herrmann. All rights reserved.
 #-------------------------------------------------------------------------------
 
-orphan=$(snap connections --all | grep 'content' | grep -v 'themes' | grep -v 'slot' | awk '$2 == "-" {print $3}' | cut -d: -f1)
+# Find orphaned snaps and check if orphaned snaps are default providers
+orphan=$(snap connections --all | grep -E 'content' | grep -vE 'themes|slot' | awk '$2 == "-" {print $3}' | cut -d: -f 1)
+plug=$(snap connections --all | grep -E 'content' | awk '$2!= "-" {print $2}' | cut -d: -f 1 | sort -u)
 provider=$(grep "default-provider:" /snap/*/*/meta/snap.yaml | awk '{print $NF}' | sort -u)
-plug=$(snap connections $orphan | grep 'content' | awk '$2!= "-" {print $2}' | cut -d: -f1)
 
 if [ -z "$orphan" ]; then
-    echo "No orphaned snaps found" 
-  elif [[ $provider =~ $orphan ]]; then    
-      echo "Snap $orphan has no dependencies, but it is the default provider for snap $plug and therefore cannot be uninstalled."
-    else
-      sudo snap remove $orphan
+    echo "No orphaned snaps found." 
+  elif [[ $provider =~ $orphan ]]; then
+  echo "Snap $orphan has no dependencies, but it is the default provider for snap $plug and therefore cannot be uninstalled."
+else
+  # Remove orphaned snaps
+  sudo snap remove $orphan
+  if [ $? -ne 0 ]; then
+    echo "Error removing snap $orphan"
+  fi
+fi
+
+# Find base snaps and check if base snaps are used by other snaps
+corephan=$(snap list --all | grep -E 'base' | awk '{print $1}' | cut -d: -f 1)
+base=$(grep "base:" /snap/*/*/meta/snap.yaml | awk '{print $NF}' | sort -u)
+bplug=$(grep "base:" /snap/*/*/meta/snap.yaml | cut -d '/' -f 3 | awk '{print $NF}' | sort -u)
+
+if [[ $base =~ $corephan ]]; then
+  echo "$base is/are base for snap $bplug and therefore cannot be uninstalled."
+else
+  # Remove base snaps
+  sudo snap remove $corephan
+  if [ $? -ne 0 ]; then
+    echo "Error removing snap $corephan"
+  fi
 fi
