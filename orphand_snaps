@@ -27,7 +27,7 @@ fi
 
 # Find base snaps and check if base snaps are used by other snaps
 corephan=$(snap list --all | grep -E 'base' | awk '{print $1}' | cut -d: -f 1)
-for o in $orphan; do
+for o in $corephan; do
   bplug=$(grep "base:" /snap/*/*/meta/snap.yaml | cut -d '/' -f 3 | awk '{print $NF}' | sort -u)
 done
 base=$(grep "base:" /snap/*/*/meta/snap.yaml | awk '{print $NF}' | sort -u)
