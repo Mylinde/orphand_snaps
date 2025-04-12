@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/fish
 #----------------------------------------------------------------------------------------------------------------------------------------------------------
 # Description: This script is designed to find and remove orphaned snap packages, unless they serve as a default provider or base for another snap package.
 # Additionally, it removes snaps that are marked as disabled.
@@ -7,50 +7,46 @@
 #----------------------------------------------------------------------------------------------------------------------------------------------------------
 
 # Find and remove disabled snaps
-local_lang=$LANG
-LANG=C
-
-snap list --all | awk "/disabled/{print \$1, \$3}" |
-  while read snapname revision; do
-    sudo snap remove "$snapname" --revision="$revision"
-  done
-
-LANG=$local_lang
+set -x LANG en_US.UTF-8
+snap list --all | awk "/disabled/{print \$1, \$3}" | while read -r snapname revision
+  sudo snap remove "$snapname" --revision="$revision"
+set -e LANG
+end
 
 # Find orphaned snaps and check if orphaned snaps are default providers
-orphan=$(snap connections --all | grep -E 'content' | grep -vE 'themes|slot' | awk '$2 == "-" {print $3}' | cut -d: -f 1)
-provider=$(grep "default-provider:" /snap/*/*/meta/snap.yaml | awk '{print $NF}' | sort -u)
+set orphan (snap connections --all | grep -E 'content' | grep -vE 'themes|slot' | awk '$2 == "-" {print $3}' | cut -d: -f 1)
+set provider (grep "default-provider:" /snap/*/*/meta/snap.yaml | awk '{print $NF}' | sort -u)
 
-if [ -z "$orphan" ]; then
+if not set -q orphan[0]
   echo "No orphaned snaps found."
 else
-  for o in $orphan; do
-    plug=$(snap connections $o | grep -E 'content' | awk '$2!= "-" {print $2}' | cut -d: -f 1 | sort -u)
-    if [[ $provider =~ $o ]]; then
+  for o in $orphan
+    set plug (snap connections $o | grep -E 'content' | awk '$2!= "-" {print $2}' | cut -d: -f 1 | sort -u)
+    if contains $o $provider
       echo "Snap $o has no dependencies, but it is the default provider for snap $plug and therefore cannot be uninstalled."
     else
       # Remove orphaned snaps
       sudo snap remove $o
-      if [ $? -ne 0 ]; then
+      if test $status -ne 0
         echo "Error removing snap $o"
-      fi
-    fi
-  done
-fi
+      end
+    end
+  end
+end
 
 # Find base snaps and check if base snaps are used by other snaps
-corephan=$(snap list --all | grep -E 'base' | awk '{print $1}' | cut -d: -f 1)
-base=$(grep "base:" /snap/*/*/meta/snap.yaml | awk '{print $NF}' | sort -u)
+set corephan (snap list --all | grep -E 'base' | awk '{print $1}' | cut -d: -f 1)
+set base (grep "base:" /snap/*/*/meta/snap.yaml | awk '{print $NF}' | sort -u)
 
-for b in $corephan; do
-  bplug=$(grep "base:" /snap/*/*/meta/snap.yaml | cut -d '/' -f 3 | awk '{print $NF}' | sort -u)
-  if [[ $base =~ $b ]]; then
+for b in $corephan
+  set bplug (grep "base:" /snap/*/*/meta/snap.yaml | cut -d '/' -f 3 | awk '{print $NF}' | sort -u)
+  if contains $b $base
     echo "$b is base for snap $bplug and therefore cannot be uninstalled."
   else
     # Remove base snaps
     sudo snap remove $b
-    if [ $? -ne 0 ]; then
-      echo "Error removing snap $b"
-    fi
-  fi
-done
+    if test $status -ne 0
+      echo "Error removing base snap $b"
+    end
+  end
+end

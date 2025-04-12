@@ -4,14 +4,14 @@
 **Description**
 ---------------
 
-This script finds and removes orphaned snap packages on a Linux system, unless they serve as a default provider for another snap package.
+This script automatically removes orphaned snap packages on a Linux system, unless they serve as a default provider for another snap package. Additionally, it removes snaps that are marked as disabled. The script works with Bash and Fish shells.
 
 **Usage**
------
+---------
 
-1. Save this script as a file (e.g. `remove_orphaned_snaps.sh`)
-2. Make the script executable with `chmod +x remove_orphaned_snaps.sh`
-3. Run the script with `./remove_orphaned_snaps.sh`
+1. Save this script as a file (e.g. `remove_orphaned_snaps`)
+2. Make the script executable with `chmod +x remove_orphaned_snaps`
+3. Run the script with `./remove_orphaned_snaps`
 
 **How it works**
 ----------------
@@ -24,6 +24,6 @@ This script finds and removes orphaned snap packages on a Linux system, unless t
 6. Otherwise, the script will remove the orphaned package using `sudo snap remove`.
 
 **Notes**
------
+---------
 
 * Be careful when running this script, as it will permanently remove packages without prompting for confirmation.
