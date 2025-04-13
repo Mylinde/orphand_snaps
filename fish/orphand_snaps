@@ -14,14 +14,14 @@ end
 set -e LANG
 
 # Find orphaned snaps and check if orphaned snaps are default providers
-set orphan (snap connections --all | string match -v -r "themes|slot" | awk /content/{print \$3} | string split : | head -n 1)
+set orphan (snap connections --all | string match -e content | string match -v -r "themes|slot" | awk '$2 == "-" {print $3}' | string split : -f 1)
 set provider (grep default-provider /snap/*/*/meta/snap.yaml | awk {print \$NF} | sort -u)
 
-if not set -q orphan[0]
+if not set -q orphan[1]
   echo No orphaned snaps found.
 else
   for o in $orphan
-    set plug (snap connections | string match -e content | awk {print \$2} | string split : |  head -n 1)
+    set plug (snap connections $o | string match -e content | awk {print \$2} | string split : |  head -n 1)
     if contains $o $provider
       echo Snap $o has no dependencies, but it is the default provider for snap $plug and therefore cannot be uninstalled.
     else
