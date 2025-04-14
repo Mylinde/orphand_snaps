@@ -7,11 +7,9 @@
 #----------------------------------------------------------------------------------------------------------------------------------------------------------
 
 # Find and remove disabled snaps
-set LANG en_US.UTF-8
-snap list --all | awk "/disabled/{print \$1, \$3}" | while read snapname revision
+LANG=C snap list --all | awk "/disabled/{print \$1, \$3}" | while read snapname revision
   sudo snap remove $snapname --revision=$revision
 end
-set -e LANG
 
 # Find orphaned snaps and check if orphaned snaps are default providers
 set orphan (snap connections --all | string match -e 'content' | string match -v -r "themes|slot" | awk '$2 == "-" {print $3}' | string split : -f 1)
