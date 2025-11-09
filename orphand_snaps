@@ -8,7 +8,7 @@
 
 # Find and remove disabled snaps
 LANG=C snap list --all | awk "/disabled/{print \$1, \$3}" |
-  while read snapname revision; do
+  while read -r snapname revision; do
     sudo snap remove "$snapname" --revision="$revision"
   done
 
@@ -20,13 +20,12 @@ if [ -z "$orphan" ]; then
   echo "No orphaned snaps found."
 else
   for o in $orphan; do
-    plug=$(snap connections $o | grep -E 'content' | awk '$2!= "-" {print $2}' | cut -d: -f 1 | sort -u)
+    plug=$(snap connections "$o" | grep -E 'content' | awk '$2!= "-" {print $2}' | cut -d: -f 1 | sort -u)
     if [[ $provider =~ $o ]]; then
       echo "Snap $o has no dependencies, but it is the default provider for snap $plug and therefore cannot be uninstalled."
     else
       # Remove orphaned snaps
-      sudo snap remove $o
-      if [ $? -ne 0 ]; then
+      if ! sudo snap remove "$o"; then
         echo "Error removing snap $o"
       fi
     fi
@@ -43,8 +42,7 @@ for b in $corephan; do
     echo "$b is base for snap $bplug and therefore cannot be uninstalled."
   else
     # Remove base snaps
-    sudo snap remove $b
-    if [ $? -ne 0 ]; then
+    if ! sudo snap remove "$b"; then
       echo "Error removing snap $b"
     fi
   fi
