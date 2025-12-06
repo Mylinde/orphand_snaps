@@ -1,20 +1,40 @@
-**Orphaned Snap Packages Remover**
-=====================================
+# Orphaned Snap Packages Remover
 
-**Description**
----------------
+## Description
 
-This script automatically removes orphaned snap packages on a Linux system, unless they serve as a default provider for another snap package. Additionally, it removes snaps that are marked as disabled. The script works with Bash and Fish shells.
+Removes orphaned snap packages unless they are default providers or bases; also removes disabled snaps. Provides:
+- Bash and Fish scripts
+- Installer that places the script in /usr/local/bin
+- systemd service and weekly timer
+- Supports sudo or doas (auto-detect, overridable)
 
-**Usage**
----------
+## Installation
+
+Bash:
+````bash
+# Install (auto-detect doas/sudo; override with OVERRIDE_ELEVATION=doas|sudo)
+OVERRIDE_ELEVATION=doas orphand_snaps install
+
+# Uninstall
+OVERRIDE_ELEVATION=sudo orphand_snaps uninstall
+`````
+
+Fish:
+````fish
+# Install (auto-detect doas/sudo; override with OVERRIDE_ELEVATION=doas|sudo)
+set -x OVERRIDE_ELEVATION doas orphand_snaps install
+
+# Uninstall
+set -x OVERRIDE_ELEVATION sudo orphand_snaps uninstall
+`````
+
+## Usage
 
 1. Save this script as a file (e.g. `remove_orphaned_snaps`)
 2. Make the script executable with `chmod +x remove_orphaned_snaps`
 3. Run the script with `./remove_orphaned_snaps`
 
-**How it works**
-----------------
+## How it works
 
 1. The script uses `snap connections` to find all snap packages that have no connections (i.e. are orphaned).
 2. It filters out themes and slot-based connections.
@@ -23,7 +43,6 @@ This script automatically removes orphaned snap packages on a Linux system, unle
 5. If an orphaned package is a default provider, it will not be removed.
 6. Otherwise, the script will remove the orphaned package using `sudo snap remove`.
 
-**Notes**
----------
+## Notes
 
 * Be careful when running this script, as it will permanently remove packages without prompting for confirmation.
