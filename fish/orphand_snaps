@@ -4,11 +4,12 @@
 # License: MIT. Copyright (c) 2024 Mario Herrmann.
 #----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-set -l SCRIPT_NAME "orphand_snaps"
-set -l INSTALL_PATH "/usr/local/bin/$SCRIPT_NAME"
-set -l SERVICE_NAME "orphand-snaps.service"
-set -l TIMER_NAME "orphand-snaps.timer"
-set -l SYSTEMD_DIR "/etc/systemd/system"
+# Use globals so functions can access them
+set -g SCRIPT_NAME "orphand_snaps"
+set -g INSTALL_PATH "/usr/local/bin/$SCRIPT_NAME"
+set -g SERVICE_NAME "orphand-snaps.service"
+set -g TIMER_NAME "orphand-snaps.timer"
+set -g SYSTEMD_DIR "/etc/systemd/system"
 
 # Choose elevation tool: doas or sudo. Override with OVERRIDE_ELEVATION=doas|sudo
 function choose_elev --description 'Pick doas or sudo'
@@ -31,10 +32,10 @@ function choose_elev --description 'Pick doas or sudo'
     end
 end
 
-set -l ELEV (choose_elev)
-
 # Install service and timer, copy script to /usr/local/bin
 function install_units
+    set -l ELEV (choose_elev)
+
     echo "Installing $SCRIPT_NAME to $INSTALL_PATH..."
     $ELEV install -m 0755 (status -f) $INSTALL_PATH
 
@@ -74,14 +75,16 @@ TIMER'
     $ELEV systemctl enable --now $TIMER_NAME
 
     echo "Installation complete. The timer is active:"
-    systemctl list-timers $TIMER_NAME --no-legend ^/dev/null
+    systemctl list-timers $TIMER_NAME --no-legend 2>/dev/null
 end
 
 # Disable and remove service/timer and script
 function uninstall_units
+    set -l ELEV (choose_elev)
+
     echo "Disabling and removing systemd timer and service..."
-    $ELEV systemctl disable --now $TIMER_NAME ^/dev/null
-    $ELEV systemctl disable $SERVICE_NAME ^/dev/null
+    $ELEV systemctl disable --now $TIMER_NAME 2>/dev/null
+    $ELEV systemctl disable $SERVICE_NAME 2>/dev/null
     $ELEV systemctl daemon-reload
 
     $ELEV rm -f "$SYSTEMD_DIR/$TIMER_NAME" "$SYSTEMD_DIR/$SERVICE_NAME"
@@ -94,6 +97,8 @@ end
 
 # Perform cleanup: remove disabled snaps, then orphaned snaps not default providers, then unused base snaps
 function run_cleanup
+    set -l ELEV (choose_elev)
+
     # Remove disabled snaps
     env LANG=C snap list --all | awk '/disabled/{print $1, $3}' | while read -l snapname revision
         $ELEV snap remove "$snapname" --revision="$revision"
@@ -101,7 +106,7 @@ function run_cleanup
 
     # Find orphaned snaps and check if they are default providers
     set -l orphan (snap connections --all | string match -e 'content' | string match -v -r "themes|slot" | awk '$2 == "-" {print $3}' | string split -f 1 :)
-    set -l provider (grep "default-provider:" /snap/*/*/meta/snap.yaml ^/dev/null | awk '{print $NF}' | sort -u)
+    set -l provider (grep "default-provider:" /snap/*/*/meta/snap.yaml 2>/dev/null | awk '{print $NF}' | sort -u)
 
     if not set -q orphan[1]
         echo "No orphaned snaps found."
@@ -121,10 +126,10 @@ function run_cleanup
 
     # Find base snaps and check if they are used by other snaps
     set -l corephan (snap list --all | awk '/base/{print $1}')
-    set -l base (grep "base:" /snap/*/*/meta/snap.yaml ^/dev/null | awk '{print $NF}' | sort -u)
+    set -l base (grep "base:" /snap/*/*/meta/snap.yaml 2>/dev/null | awk '{print $NF}' | sort -u)
 
     for b in $corephan
-        set -l bplug (grep "base:" /snap/*/*/meta/snap.yaml ^/dev/null | string split / -f 3 | awk '{print $NF}' | sort -u)
+        set -l bplug (grep "base:" /snap/*/*/meta/snap.yaml 2>/dev/null | string split / -f 3 | awk '{print $NF}' | sort -u)
         if contains "$b" $base
             echo "$b is a base for $bplug and cannot be removed."
         else
@@ -136,8 +141,13 @@ function run_cleanup
     end
 end
 
-# Command dispatcher: install/uninstall or run cleanup
-switch (count $argv) -ge 1 && echo $argv[1]
+# Command dispatcher: determine subcommand and switch
+set -l cmd ''
+if test (count $argv) -ge 1
+    set cmd $argv[1]
+end
+
+switch $cmd
 case install
     install_units
 case uninstall remove

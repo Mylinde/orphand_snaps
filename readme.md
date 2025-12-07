@@ -12,27 +12,27 @@ Removes orphaned snap packages unless they are default providers or bases; also 
 
 Bash:
 ````bash
-# Install (auto-detect doas/sudo; override with OVERRIDE_ELEVATION=doas|sudo)
-OVERRIDE_ELEVATION=doas orphand_snaps install
+# Install (auto-detect doas/sudo; override with set -x OVERRIDE_ELEVATION=doas|sudo)
+orphand_snaps install
 
 # Uninstall
-OVERRIDE_ELEVATION=sudo orphand_snaps uninstall
+orphand_snaps uninstall
 `````
 
 Fish:
 ````fish
-# Install (auto-detect doas/sudo; override with OVERRIDE_ELEVATION=doas|sudo)
-set -x OVERRIDE_ELEVATION doas orphand_snaps install
+# Install (auto-detect doas/sudo; override with set -x OVERRIDE_ELEVATION=doas|sudo)
+orphand_snaps install
 
 # Uninstall
-set -x OVERRIDE_ELEVATION sudo orphand_snaps uninstall
+orphand_snaps uninstall
 `````
 
 ## Usage
 
-1. Save this script as a file (e.g. `remove_orphaned_snaps`)
+1. Save this script as a file (e.g. `orphand_snaps`)
 2. Make the script executable with `chmod +x remove_orphaned_snaps`
-3. Run the script with `./remove_orphaned_snaps`
+3. Run the script with `./orphand_snaps`
 
 ## How it works
 
