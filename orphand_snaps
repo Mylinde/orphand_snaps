@@ -99,12 +99,28 @@ uninstall_units() {
   echo "Uninstallation complete."
 }
 
+# State file format (from now on):
+# Line 1: "# timestamp: <ISO8601>"
+# Following lines: "<name>[,<channel>][,<revision>]"
+
+# helper: get channel of a snap from 'snap info'
+get_snap_channel() {
+  # best-effort: pick the currently tracking channel if installed, else default stable
+  local name="$1"
+  # Try reading tracking channel from 'snap list'
+  local ch
+  ch=$(snap list 2>/dev/null | awk -v n="$name" '$1==n {print $NF}' | sed 's/^-$/stable/')
+  if [ -n "$ch" ]; then
+    echo "$ch"; return
+  fi
+  # Fallback: use stable
+  echo "stable"
+}
+
 # Record removed snaps to the state file (one name per line, de-duplicated)
 record_removed() {
   local removed_list=("$@")
-  # Ensure state dir exists
   "$ELEV_BIN" install -d -m 0755 "${STATE_DIR}"
-  # Write snapshot with timestamp header and names
   {
     echo "# timestamp: $(date -Iseconds)"
     printf "%s\n" "${removed_list[@]}" | awk 'NF' | sort -u
@@ -114,100 +130,105 @@ record_removed() {
 # Undo helpers
 undo_list() {
   if ! "$ELEV_BIN" test -f "${STATE_FILE}"; then
-    echo "No undo information available."
-    return 0
+    echo "No undo information available."; return 0
   fi
-  echo "Snaps removed in last run:"
+  echo "Snaps removed in last run (name,channel[,revision]):"
   "$ELEV_BIN" awk 'NR>1 {print $0}' "${STATE_FILE}"
 }
 
 undo_install_one() {
   local snapname="${1:-}"
   if [ -z "${snapname}" ]; then
-    echo "Usage: ${SCRIPT_NAME} undo snapname"
-    return 1
+    echo "Usage: ${SCRIPT_NAME} undo snapname"; return 1
   fi
-  if ! "$ELEV_BIN" awk -v s="$snapname" 'NR>1 && $0==s {found=1} END{exit !found}' "${STATE_FILE}" 2>/dev/null; then
-    echo "Snap '${snapname}' not found in last removal list."
-    return 1
+  if ! "$ELEV_BIN" awk -F, -v s="$snapname" 'NR>1 && $1==s {found=1} END{exit !found}' "${STATE_FILE}" 2>/dev/null; then
+    echo "Snap '${snapname}' not found in last removal list."; return 1
   fi
-  echo "Reinstalling '${snapname}'..."
-  "$ELEV_BIN" snap install "${snapname}"
+  # Extract channel (and ignore revision; store may not offer specific rev)
+  channel=$("$ELEV_BIN" awk -F, -v s="$snapname" 'NR>1 && $1==s {print $2; exit}' "${STATE_FILE}")
+  if [ -n "${channel}" ]; then
+    echo "Reinstalling '${snapname}' on channel '${channel}'..."
+    "$ELEV_BIN" snap install --channel "${channel}" "${snapname}"
+  else
+    echo "Reinstalling '${snapname}'..."
+    "$ELEV_BIN" snap install "${snapname}"
+  fi
 }
 
 undo_install_all() {
   if ! "$ELEV_BIN" test -f "${STATE_FILE}"; then
-    echo "No undo information available."
-    return 0
+    echo "No undo information available."; return 0
   fi
   echo "Reinstalling all snaps from last run..."
-  "$ELEV_BIN" awk 'NR>1 {print $0}' "${STATE_FILE}" | while read -r s; do
-    [ -n "$s" ] || continue
-    echo "Reinstalling '${s}'..."
-    "$ELEV_BIN" snap install "$s" || echo "Failed to reinstall '${s}'."
+  "$ELEV_BIN" awk -F, 'NR>1 {print $1 "|" $2}' "${STATE_FILE}" | while IFS='|' read -r name channel; do
+    [ -n "$name" ] || continue
+    if [ -n "$channel" ]; then
+      echo "Reinstalling '${name}' on channel '${channel}'..."
+      "$ELEV_BIN" snap install --channel "$channel" "$name" || echo "Failed to reinstall '${name}'."
+    else
+      echo "Reinstalling '${name}'..."
+      "$ELEV_BIN" snap install "$name" || echo "Failed to reinstall '${name}'."
+    fi
   done
 }
 
 run_cleanup() {
-  # Collect names of removed snaps for undo
   local removed=()
 
-  # Remove disabled snaps
+  # Remove disabled snaps (we know the exact revision being removed)
   LANG=C snap list --all | awk "/disabled/{print \$1, \$3}" |
     while read -r snapname revision; do
+      # capture channel (best-effort)
+      channel=$(get_snap_channel "$snapname")
       if "$ELEV_BIN" snap remove "$snapname" --revision="$revision"; then
-        removed+=("$snapname")
+        removed+=("${snapname},${channel},${revision}")
       else
         echo "Error removing disabled snap ${snapname}@${revision}"
       fi
     done
 
-  # Find orphaned snaps and check if they are default providers
+  # Orphans (current active revision removed; store channel)
   orphan=$(snap connections --all | grep -E 'content' | grep -vE 'themes|slot' | awk '$2 == "-" {print $3}' | cut -d: -f 1)
   provider=$(grep "default-provider:" /snap/*/*/meta/snap.yaml 2>/dev/null | awk '{print $NF}' | sort -u)
-
-  if [ -z "${orphan}" ]; then
-    echo "No orphaned snaps found."
-  else
+  if [ -n "${orphan}" ]; then
     for o in ${orphan}; do
       plug=$(snap connections "$o" | grep -E 'content' | awk '$2!= "-" {print $2}' | cut -d: -f 1 | sort -u)
       if [[ " ${provider} " =~ " ${o} " ]]; then
         echo "Snap ${o} is a default provider for ${plug} and cannot be removed."
       else
-        # Remove orphaned snaps
+        channel=$(get_snap_channel "$o")
         if "$ELEV_BIN" snap remove "${o}"; then
-          removed+=("$o")
+          removed+=("${o},${channel}")
         else
           echo "Error removing snap ${o}"
         fi
       fi
     done
+  else
+    echo "No orphaned snaps found."
   fi
 
-  # Find base snaps and check if they are used by other snaps
+  # Bases
   corephan=$(snap list --all | grep -E 'base' | awk '{print $1}' | cut -d: -f 1)
   base=$(grep "base:" /snap/*/*/meta/snap.yaml 2>/dev/null | awk '{print $NF}' | sort -u)
-
   for b in ${corephan}; do
     bplug=$(grep "base:" /snap/*/*/meta/snap.yaml 2>/dev/null | cut -d '/' -f 3 | awk '{print $NF}' | sort -u)
     if [[ " ${base} " =~ " ${b} " ]]; then
       echo "${b} is a base for ${bplug} and cannot be removed."
     else
-      # Remove base snaps
+      channel=$(get_snap_channel "$b")
       if "$ELEV_BIN" snap remove "${b}"; then
-        removed+=("$b")
+        removed+=("${b},${channel}")
       else
         echo "Error removing snap ${b}"
       fi
     fi
   done
 
-  # Persist removed list for undo
   if [ "${#removed[@]}" -gt 0 ]; then
     record_removed "${removed[@]}"
     echo "Recorded ${#removed[@]} removed snap(s) for undo."
   else
-    # Clear file to indicate no removals
     "$ELEV_BIN" install -d -m 0755 "${STATE_DIR}"
     echo "# timestamp: $(date -Iseconds)" | "$ELEV_BIN" tee "${STATE_FILE}" >/dev/null
     echo "No snaps removed; undo list cleared."
