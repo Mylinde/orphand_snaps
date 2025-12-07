@@ -142,6 +142,27 @@ undo_list() {
   "$ELEV_BIN" awk 'NR>1 {print $0}' "${STATE_FILE}"
 }
 
+# helper: reinstall via refresh if installed, else install
+reinstall_snap() {
+  local name="$1"
+  local channel="${2:-}"
+  local is_installed
+  is_installed=$(snap list 2>/dev/null | awk -v n="$name" '$1==n {print $1}')
+  if [ -n "$is_installed" ]; then
+    if [ -n "$channel" ]; then
+      "$ELEV_BIN" snap refresh "$name" --channel "$channel"
+    else
+      "$ELEV_BIN" snap refresh "$name"
+    fi
+  else
+    if [ -n "$channel" ]; then
+      "$ELEV_BIN" snap install "$name" --channel "$channel"
+    else
+      "$ELEV_BIN" snap install "$name"
+    fi
+  fi
+}
+
 undo_install_one() {
   ensure_state
   local snapname="${1:-}"
@@ -151,15 +172,10 @@ undo_install_one() {
   if ! "$ELEV_BIN" awk -F, -v s="$snapname" 'NR>1 && $1==s {found=1} END{exit !found}' "${STATE_FILE}" 2>/dev/null; then
     echo "Snap '${snapname}' not found in last removal list."; return 1
   fi
-  # Extract channel (and ignore revision; store may not offer specific rev)
+  local channel
   channel=$("$ELEV_BIN" awk -F, -v s="$snapname" 'NR>1 && $1==s {print $2; exit}' "${STATE_FILE}")
-  if [ -n "${channel}" ]; then
-    echo "Reinstalling '${snapname}' on channel '${channel}'..."
-    "$ELEV_BIN" snap install --channel "${channel}" "${snapname}"
-  else
-    echo "Reinstalling '${snapname}'..."
-    "$ELEV_BIN" snap install "${snapname}"
-  fi
+  echo "Restoring '${snapname}'"$( [ -n "$channel" ] && echo " on channel '${channel}'" )"..."
+  reinstall_snap "$snapname" "$channel"
 }
 
 undo_install_all() {
@@ -167,16 +183,11 @@ undo_install_all() {
   if ! "$ELEV_BIN" test -f "${STATE_FILE}"; then
     echo "No undo information available."; return 0
   fi
-  echo "Reinstalling all snaps from last run..."
+  echo "Restoring all snaps from last run..."
   "$ELEV_BIN" awk -F, 'NR>1 {print $1 "|" $2}' "${STATE_FILE}" | while IFS='|' read -r name channel; do
     [ -n "$name" ] || continue
-    if [ -n "$channel" ]; then
-      echo "Reinstalling '${name}' on channel '${channel}'..."
-      "$ELEV_BIN" snap install --channel "$channel" "$name" || echo "Failed to reinstall '${name}'."
-    else
-      echo "Reinstalling '${name}'..."
-      "$ELEV_BIN" snap install "$name" || echo "Failed to reinstall '${name}'."
-    fi
+    echo "Restoring '${name}'"$( [ -n "$channel" ] && echo " on channel '${channel}'" )"..."
+    reinstall_snap "$name" "$channel" || echo "Failed to restore '${name}'."
   done
 }
 
@@ -185,16 +196,15 @@ run_cleanup() {
   local removed=()
 
   # Remove disabled snaps (we know the exact revision being removed)
-  LANG=C snap list --all | awk "/disabled/{print \$1, \$3}" |
-    while read -r snapname revision; do
-      # capture channel (best-effort)
-      channel=$(get_snap_channel "$snapname")
-      if "$ELEV_BIN" snap remove "$snapname" --revision="$revision"; then
-        removed+=("${snapname},${channel},${revision}")
-      else
-        echo "Error removing disabled snap ${snapname}@${revision}"
-      fi
-    done
+  while read -r snapname revision; do
+    # capture channel (best-effort)
+    channel=$(get_snap_channel "$snapname")
+    if "$ELEV_BIN" snap remove "$snapname" --revision="$revision"; then
+      removed+=("${snapname},${channel},${revision}")
+    else
+      echo "Error removing disabled snap ${snapname}@${revision}"
+    fi
+  done < <(LANG=C snap list --all | awk "/disabled/{print \$1, \$3}")
 
   # Orphans (current active revision removed; store channel)
   orphan=$(snap connections --all | grep -E 'content' | grep -vE 'themes|slot' | awk '$2 == "-" {print $3}' | cut -d: -f 1)
@@ -234,11 +244,12 @@ run_cleanup() {
     fi
   done
 
+  # Persist removed list for undo
   if [ "${#removed[@]}" -gt 0 ]; then
     record_removed "${removed[@]}"
     echo "Recorded ${#removed[@]} removed snap(s) for undo."
   else
-    "$ELEV_BIN" install -d -m 0755 "${STATE_DIR}"
+    ensure_state
     echo "# timestamp: $(date -Iseconds)" | "$ELEV_BIN" tee "${STATE_FILE}" >/dev/null
     echo "No snaps removed; undo list cleared."
   fi
