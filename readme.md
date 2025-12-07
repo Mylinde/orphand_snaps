@@ -28,6 +28,22 @@ orphand_snaps install
 orphand_snaps uninstall
 `````
 
+## Undo
+
+The last run records removed snaps to:
+- State file: /var/lib/orphand_snaps/last_removed.txt
+
+Usage:
+````bash
+# List snaps removed in the last run
+orphand_snaps undo
+
+# Reinstall a single snap
+orphand_snaps undo SNAPNAME
+
+# Reinstall all snaps removed in the last run
+orphand_snaps undo all
+
 ## Usage
 
 1. Save this script as a file (e.g. `orphand_snaps`)
