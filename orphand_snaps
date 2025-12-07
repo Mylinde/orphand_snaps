@@ -283,8 +283,6 @@ run_cleanup() {
       fi
     fi
   done
-
-  echo "Undo list written to ${STATE_FILE}."
 }
 
 case "${1:-}" in
