@@ -8,7 +8,13 @@ Removes orphaned snap packages unless they are default providers or bases; also 
 - systemd service and weekly timer
 - Supports sudo or doas (auto-detect, overridable)
 
-## Installation
+## Usage
+
+1. Save this script as a file (e.g. `orphand_snaps`)
+2. Make the script executable with `chmod +x remove_orphaned_snaps`
+3. Run the script with `./orphand_snaps`
+
+## optional Installation
 
 Bash:
 ````bash
@@ -44,13 +50,6 @@ orphand_snaps undo SNAPNAME
 # Reinstall all snaps removed in the last run
 orphand_snaps undo all
 `````
-
-## Usage
-
-1. Save this script as a file (e.g. `orphand_snaps`)
-2. Make the script executable with `chmod +x remove_orphaned_snaps`
-3. Run the script with `./orphand_snaps`
-
 ## How it works
 
 1. The script uses `snap connections` to find all snap packages that have no connections (i.e. are orphaned).
@@ -59,7 +58,6 @@ orphand_snaps undo all
 4. It checks if any of the orphaned packages are default providers for other packages by parsing the `snap.yaml` files.
 5. If an orphaned package is a default provider, it will not be removed.
 6. Otherwise, the script will remove the orphaned package using `sudo snap remove`.
-
 ## Notes
 
 * Be careful when running this script, as it will permanently remove packages without prompting for confirmation.
