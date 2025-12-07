@@ -43,6 +43,7 @@ orphand_snaps undo SNAPNAME
 
 # Reinstall all snaps removed in the last run
 orphand_snaps undo all
+`````
 
 ## Usage
 
