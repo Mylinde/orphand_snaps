@@ -110,16 +110,18 @@ uninstall_units() {
 
 # helper: get channel of a snap from 'snap info'
 get_snap_channel() {
-  # best-effort: pick the currently tracking channel if installed, else default stable
   local name="$1"
-  # Try reading tracking channel from 'snap list'
+  # tracking column (last column) may be "-" or non-channel; sanitize to stable
   local ch
-  ch=$(snap list 2>/dev/null | awk -v n="$name" '$1==n {print $NF}' | sed 's/^-$/stable/')
-  if [ -n "$ch" ]; then
-    echo "$ch"; return
-  fi
-  # Fallback: use stable
-  echo "stable"
+  ch=$(snap list 2>/dev/null | awk -v n="$name" '$1==n {print $NF}')
+  case "${ch}" in
+    ""|"-"|"base"|"latest" )
+      echo "stable"
+      ;;
+    *)
+      echo "${ch}"
+      ;;
+  esac
 }
 
 # Record removed snaps to the state file (one name per line, de-duplicated)
@@ -143,12 +145,24 @@ undo_list() {
   "$ELEV_BIN" awk 'NR>1 {print $0}' "${STATE_FILE}"
 }
 
-# helper: reinstall via refresh if installed, else install
+# helper: reinstall via refresh if installed, else install; support revision
 reinstall_snap() {
   local name="$1"
   local channel="${2:-}"
+  local revision="${3:-}"
   local is_installed
   is_installed=$(snap list 2>/dev/null | awk -v n="$name" '$1==n {print $1}')
+
+  if [ -n "$revision" ]; then
+    # Prefer refresh with explicit revision
+    if [ -z "$is_installed" ]; then
+      "$ELEV_BIN" snap install "$name" || return 1
+    fi
+    "$ELEV_BIN" snap refresh "$name" --revision="$revision"
+    return $?
+  fi
+
+  # No revision recorded: use channel if available
   if [ -n "$is_installed" ]; then
     if [ -n "$channel" ]; then
       "$ELEV_BIN" snap refresh "$name" --channel "$channel"
@@ -173,10 +187,17 @@ undo_install_one() {
   if ! "$ELEV_BIN" awk -F, -v s="$snapname" 'NR>1 && $1==s {found=1} END{exit !found}' "${STATE_FILE}" 2>/dev/null; then
     echo "Snap '${snapname}' not found in last removal list."; return 1
   fi
-  local channel
+  local channel revision
   channel=$("$ELEV_BIN" awk -F, -v s="$snapname" 'NR>1 && $1==s {print $2; exit}' "${STATE_FILE}")
-  echo "Restoring '${snapname}'"$( [ -n "$channel" ] && echo " on channel '${channel}'" )"..."
-  reinstall_snap "$snapname" "$channel"
+  revision=$("$ELEV_BIN" awk -F, -v s="$snapname" 'NR>1 && $1==s {print $3; exit}' "${STATE_FILE}")
+
+  if [ -n "$revision" ]; then
+    echo "Restoring '${snapname}' to revision '${revision}'..."
+    reinstall_snap "$snapname" "$channel" "$revision"
+  else
+    echo "Restoring '${snapname}'"$( [ -n "$channel" ] && echo " on channel '${channel}'" )"..."
+    reinstall_snap "$snapname" "$channel"
+  fi
 }
 
 undo_install_all() {
@@ -185,10 +206,15 @@ undo_install_all() {
     echo "No undo information available."; return 0
   fi
   echo "Restoring all snaps from last run..."
-  "$ELEV_BIN" awk -F, 'NR>1 {print $1 "|" $2}' "${STATE_FILE}" | while IFS='|' read -r name channel; do
+  "$ELEV_BIN" awk -F, 'NR>1 {print $1 "|" $2 "|" $3}' "${STATE_FILE}" | while IFS='|' read -r name channel revision; do
     [ -n "$name" ] || continue
-    echo "Restoring '${name}'"$( [ -n "$channel" ] && echo " on channel '${channel}'" )"..."
-    reinstall_snap "$name" "$channel" || echo "Failed to restore '${name}'."
+    if [ -n "$revision" ]; then
+      echo "Restoring '${name}' to revision '${revision}'..."
+      reinstall_snap "$name" "$channel" "$revision" || echo "Failed to restore '${name}'."
+    else
+      echo "Restoring '${name}'"$( [ -n "$channel" ] && echo " on channel '${channel}'" )"..."
+      reinstall_snap "$name" "$channel" || echo "Failed to restore '${name}'."
+    fi
   done
 }
 
