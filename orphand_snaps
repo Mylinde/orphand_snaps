@@ -36,13 +36,18 @@ choose_elev() {
 
 ELEV_BIN="$(choose_elev)"
 
+# Ensure state directory and file exist
+ensure_state() {
+  "$ELEV_BIN" install -d -m 0755 "${STATE_DIR}"
+  "$ELEV_BIN" touch "${STATE_FILE}"
+}
+
 install_units() {
   echo "Installing ${SCRIPT_NAME} to ${INSTALL_PATH}..."
   "$ELEV_BIN" install -m 0755 "$0" "$INSTALL_PATH"
 
   echo "Preparing state directory..."
-  "$ELEV_BIN" install -d -m 0755 "${STATE_DIR}"
-  "$ELEV_BIN" touch "${STATE_FILE}"
+  ensure_state
 
   echo "Creating systemd service and timer..."
   "$ELEV_BIN" tee "${SYSTEMD_DIR}/${SERVICE_NAME}" >/dev/null <<'SERVICE'
@@ -129,7 +134,8 @@ record_removed() {
 
 # Undo helpers
 undo_list() {
-  if ! "$ELEV_BIN" test -f "${STATE_FILE}"; then
+  ensure_state
+  if ! "$ELEV_BIN" test -s "${STATE_FILE}"; then
     echo "No undo information available."; return 0
   fi
   echo "Snaps removed in last run (name,channel[,revision]):"
@@ -137,6 +143,7 @@ undo_list() {
 }
 
 undo_install_one() {
+  ensure_state
   local snapname="${1:-}"
   if [ -z "${snapname}" ]; then
     echo "Usage: ${SCRIPT_NAME} undo snapname"; return 1
@@ -156,6 +163,7 @@ undo_install_one() {
 }
 
 undo_install_all() {
+  ensure_state
   if ! "$ELEV_BIN" test -f "${STATE_FILE}"; then
     echo "No undo information available."; return 0
   fi
@@ -173,6 +181,7 @@ undo_install_all() {
 }
 
 run_cleanup() {
+  ensure_state
   local removed=()
 
   # Remove disabled snaps (we know the exact revision being removed)
