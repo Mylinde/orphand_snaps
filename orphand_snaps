@@ -1,6 +1,7 @@
 #!/bin/bash
 #----------------------------------------------------------------------------------------------------------------------------------------------------------
 # Description: This script finds and removes orphaned snap packages (not default providers or bases) and disabled snaps.
+# Adds undo functionality to list and reinstall snaps removed in the last run.
 # License: MIT. Copyright (c) 2024 Mario Herrmann.
 #----------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -11,6 +12,10 @@ INSTALL_PATH="/usr/local/bin/${SCRIPT_NAME}"
 SERVICE_NAME="orphand-snaps.service"
 TIMER_NAME="orphand-snaps.timer"
 SYSTEMD_DIR="/etc/systemd/system"
+
+# State file to record last removed snaps
+STATE_DIR="/var/lib/${SCRIPT_NAME}"
+STATE_FILE="${STATE_DIR}/last_removed.txt"
 
 # Pick sudo or doas. Override with OVERRIDE_ELEVATION=sudo|doas
 choose_elev() {
@@ -34,6 +39,10 @@ ELEV_BIN="$(choose_elev)"
 install_units() {
   echo "Installing ${SCRIPT_NAME} to ${INSTALL_PATH}..."
   "$ELEV_BIN" install -m 0755 "$0" "$INSTALL_PATH"
+
+  echo "Preparing state directory..."
+  "$ELEV_BIN" install -d -m 0755 "${STATE_DIR}"
+  "$ELEV_BIN" touch "${STATE_FILE}"
 
   echo "Creating systemd service and timer..."
   "$ELEV_BIN" tee "${SYSTEMD_DIR}/${SERVICE_NAME}" >/dev/null <<'SERVICE'
@@ -84,14 +93,73 @@ uninstall_units() {
   echo "Removing ${INSTALL_PATH}..."
   "$ELEV_BIN" rm -f "${INSTALL_PATH}"
 
+  echo "Removing state directory..."
+  "$ELEV_BIN" rm -rf "${STATE_DIR}"
+
   echo "Uninstallation complete."
 }
 
+# Record removed snaps to the state file (one name per line, de-duplicated)
+record_removed() {
+  local removed_list=("$@")
+  # Ensure state dir exists
+  "$ELEV_BIN" install -d -m 0755 "${STATE_DIR}"
+  # Write snapshot with timestamp header and names
+  {
+    echo "# timestamp: $(date -Iseconds)"
+    printf "%s\n" "${removed_list[@]}" | awk 'NF' | sort -u
+  } | "$ELEV_BIN" tee "${STATE_FILE}" >/dev/null
+}
+
+# Undo helpers
+undo_list() {
+  if ! "$ELEV_BIN" test -f "${STATE_FILE}"; then
+    echo "No undo information available."
+    return 0
+  fi
+  echo "Snaps removed in last run:"
+  "$ELEV_BIN" awk 'NR>1 {print $0}' "${STATE_FILE}"
+}
+
+undo_install_one() {
+  local snapname="${1:-}"
+  if [ -z "${snapname}" ]; then
+    echo "Usage: ${SCRIPT_NAME} undo snapname"
+    return 1
+  fi
+  if ! "$ELEV_BIN" awk -v s="$snapname" 'NR>1 && $0==s {found=1} END{exit !found}' "${STATE_FILE}" 2>/dev/null; then
+    echo "Snap '${snapname}' not found in last removal list."
+    return 1
+  fi
+  echo "Reinstalling '${snapname}'..."
+  "$ELEV_BIN" snap install "${snapname}"
+}
+
+undo_install_all() {
+  if ! "$ELEV_BIN" test -f "${STATE_FILE}"; then
+    echo "No undo information available."
+    return 0
+  fi
+  echo "Reinstalling all snaps from last run..."
+  "$ELEV_BIN" awk 'NR>1 {print $0}' "${STATE_FILE}" | while read -r s; do
+    [ -n "$s" ] || continue
+    echo "Reinstalling '${s}'..."
+    "$ELEV_BIN" snap install "$s" || echo "Failed to reinstall '${s}'."
+  done
+}
+
 run_cleanup() {
+  # Collect names of removed snaps for undo
+  local removed=()
+
   # Remove disabled snaps
   LANG=C snap list --all | awk "/disabled/{print \$1, \$3}" |
     while read -r snapname revision; do
-      "$ELEV_BIN" snap remove "$snapname" --revision="$revision"
+      if "$ELEV_BIN" snap remove "$snapname" --revision="$revision"; then
+        removed+=("$snapname")
+      else
+        echo "Error removing disabled snap ${snapname}@${revision}"
+      fi
     done
 
   # Find orphaned snaps and check if they are default providers
@@ -107,7 +175,9 @@ run_cleanup() {
         echo "Snap ${o} is a default provider for ${plug} and cannot be removed."
       else
         # Remove orphaned snaps
-        if ! "$ELEV_BIN" snap remove "${o}"; then
+        if "$ELEV_BIN" snap remove "${o}"; then
+          removed+=("$o")
+        else
           echo "Error removing snap ${o}"
         fi
       fi
@@ -124,11 +194,24 @@ run_cleanup() {
       echo "${b} is a base for ${bplug} and cannot be removed."
     else
       # Remove base snaps
-      if ! "$ELEV_BIN" snap remove "${b}"; then
+      if "$ELEV_BIN" snap remove "${b}"; then
+        removed+=("$b")
+      else
         echo "Error removing snap ${b}"
       fi
     fi
   done
+
+  # Persist removed list for undo
+  if [ "${#removed[@]}" -gt 0 ]; then
+    record_removed "${removed[@]}"
+    echo "Recorded ${#removed[@]} removed snap(s) for undo."
+  else
+    # Clear file to indicate no removals
+    "$ELEV_BIN" install -d -m 0755 "${STATE_DIR}"
+    echo "# timestamp: $(date -Iseconds)" | "$ELEV_BIN" tee "${STATE_FILE}" >/dev/null
+    echo "No snaps removed; undo list cleared."
+  fi
 }
 
 case "${1:-}" in
@@ -137,6 +220,20 @@ case "${1:-}" in
     ;;
   uninstall|remove)
     uninstall_units
+    ;;
+  undo)
+    # undo [snapname|all|<none>]
+    case "${2:-}" in
+      "" )
+        undo_list
+        ;;
+      all)
+        undo_install_all
+        ;;
+      *)
+        undo_install_one "${2}"
+        ;;
+    esac
     ;;
   *)
     run_cleanup
