@@ -17,6 +17,10 @@ SYSTEMD_DIR="/etc/systemd/system"
 STATE_DIR="/var/lib/${SCRIPT_NAME}"
 STATE_FILE="${STATE_DIR}/last_removed.txt"
 
+MAN_DST_DIR="/usr/local/share/man/man8"
+MAN_PAGE_RAW="${MAN_DST_DIR}/orphand_snaps.8"
+MAN_PAGE_GZ="${MAN_DST_DIR}/orphand_snaps.8.gz"
+
 # Pick sudo or doas. Override with OVERRIDE_ELEVATION=sudo|doas
 choose_elev() {
   if [ "${OVERRIDE_ELEVATION:-}" = "sudo" ]; then
@@ -83,6 +87,73 @@ TIMER
   "$ELEV_BIN" systemctl daemon-reload
   "$ELEV_BIN" systemctl enable --now "${TIMER_NAME}"
 
+  echo "Installing man page..."
+  "$ELEV_BIN" install -d -m 0755 "${MAN_DST_DIR}"
+  "$ELEV_BIN" tee "${MAN_PAGE_RAW}" >/dev/null <<'MANPAGE'
+.TH ORPHAND_SNAPS 8 "2025-12-09" "orphand_snaps" "System Administration"
+.SH NAME
+orphand_snaps \- remove orphaned and disabled snap packages, with undo support
+.SH SYNOPSIS
+.B orphand_snaps
+.RI [ install | uninstall | undo " [" SNAPNAME " | all ]" ]
+.SH DESCRIPTION
+The orphand_snaps script:
+- Removes disabled snaps and orphaned content/base snaps if safe to delete.
+- Records removed snaps from the last run in
+.I /var/lib/orphand_snaps/last_removed.txt
+to support undo.
+- Installs a systemd oneshot service and weekly timer.
+Elevation via
+.B doas
+or
+.B sudo
+is auto-detected; override with
+.B OVERRIDE_ELEVATION=doas|sudo
+.
+.SH COMMANDS
+.TP
+.B install
+Install the script to /usr/local/bin and set up systemd service/timer.
+.TP
+.B uninstall
+Remove systemd units and the installed script; delete state directory.
+.TP
+.B undo
+List snaps removed in the last run.
+.TP
+.B "undo SNAPNAME"
+Restore a single snap (uses snap refresh/install; revision if recorded).
+.TP
+.B "undo all"
+Restore all snaps recorded in the last run.
+.SH FILES
+.I /usr/local/bin/orphand_snaps
+\- installed script
+.br
+.I /etc/systemd/system/orphand-snaps.service
+.br
+.I /etc/systemd/system/orphand-snaps.timer
+.br
+.I /var/lib/orphand_snaps/last_removed.txt
+\- state file (name,channel[,revision])
+.SH EXAMPLES
+Install: OVERRIDE_ELEVATION=doas orphand_snaps install
+.br
+Undo list: orphand_snaps undo
+.br
+Undo one: orphand_snaps undo core18
+.br
+Undo all: orphand_snaps undo all
+.SH SEE ALSO
+.BR snap (8),
+.BR systemctl (1)
+.SH AUTHOR
+Mario Herrmann <marioherrmann at posteo.de>
+MANPAGE
+
+  "$ELEV_BIN" gzip -f "${MAN_PAGE_RAW}" || true
+  "$ELEV_BIN" mandb -q || true
+
   echo "Installation complete. The timer is active:"
   systemctl list-timers "${TIMER_NAME}" --no-legend || true
 }
@@ -100,6 +171,10 @@ uninstall_units() {
 
   echo "Removing state directory..."
   "$ELEV_BIN" rm -rf "${STATE_DIR}"
+
+  echo "Removing man page..."
+  "$ELEV_BIN" rm -f "${MAN_PAGE_GZ}" "${MAN_PAGE_RAW}" || true
+  "$ELEV_BIN" mandb -q || true
 
   echo "Uninstallation complete."
 }
@@ -285,6 +360,20 @@ run_cleanup() {
   done
 }
 
+help() {
+  echo "Usage: ${SCRIPT_NAME} [install|uninstall|undo [snapname|all]|help]"
+  echo
+  echo "Commands:"
+  echo
+  echo "  install               Install the script, systemd service and timer."
+  echo "  uninstall             Remove the installed script and systemd units."
+  echo "  undo                  List snaps removed in the last run."
+  echo "  undo snapname         Restore a single snap removed in the last run."
+  echo "  undo all              Restore all snaps removed in the last run."
+  echo "  help                  Show this help message."
+  echo
+}
+
 case "${1:-}" in
   install)
     install_units
@@ -305,6 +394,9 @@ case "${1:-}" in
         undo_install_one "${2}"
         ;;
     esac
+    ;;
+  help)
+    help
     ;;
   *)
     run_cleanup
