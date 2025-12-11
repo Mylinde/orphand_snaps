@@ -13,13 +13,14 @@ SERVICE_NAME="orphand-snaps.service"
 TIMER_NAME="orphand-snaps.timer"
 SYSTEMD_DIR="/etc/systemd/system"
 
+# Use /usr/share/man for broader MANPATH compatibility
+MAN_DST_DIR="/usr/share/man/man8"
+MAN_PAGE_RAW="${MAN_DST_DIR}/orphand_snaps.8"
+MAN_PAGE_GZ="${MAN_DST_DIR}/orphand_snaps.8.gz"
+
 # State file to record last removed snaps
 STATE_DIR="/var/lib/${SCRIPT_NAME}"
 STATE_FILE="${STATE_DIR}/last_removed.txt"
-
-MAN_DST_DIR="/usr/local/share/man/man8"
-MAN_PAGE_RAW="${MAN_DST_DIR}/orphand_snaps.8"
-MAN_PAGE_GZ="${MAN_DST_DIR}/orphand_snaps.8.gz"
 
 # Pick sudo or doas. Override with OVERRIDE_ELEVATION=sudo|doas
 choose_elev() {
@@ -38,23 +39,26 @@ choose_elev() {
   fi
 }
 
-ELEV_BIN="$(choose_elev)"
+# Choose elevation on demand (OVERRIDE_ELEVATION can change at runtime)
+get_elev() { choose_elev; }
 
 # Ensure state directory and file exist
 ensure_state() {
-  "$ELEV_BIN" install -d -m 0755 "${STATE_DIR}"
-  "$ELEV_BIN" touch "${STATE_FILE}"
+  local ELEV; ELEV="$(get_elev)"
+  "$ELEV" install -d -m 0755 "${STATE_DIR}"
+  "$ELEV" touch "${STATE_FILE}"
 }
 
 install_units() {
+  local ELEV; ELEV="$(get_elev)"
   echo "Installing ${SCRIPT_NAME} to ${INSTALL_PATH}..."
-  "$ELEV_BIN" install -m 0755 "$0" "$INSTALL_PATH"
+  "$ELEV" install -m 0755 "$0" "$INSTALL_PATH"
 
   echo "Preparing state directory..."
   ensure_state
 
   echo "Creating systemd service and timer..."
-  "$ELEV_BIN" tee "${SYSTEMD_DIR}/${SERVICE_NAME}" >/dev/null <<'SERVICE'
+  "$ELEV" tee "${SYSTEMD_DIR}/${SERVICE_NAME}" >/dev/null <<'SERVICE'
 [Unit]
 Description=Remove orphaned and disabled snaps
 
@@ -69,7 +73,7 @@ IOSchedulingPriority=7
 WantedBy=multi-user.target
 SERVICE
 
-  "$ELEV_BIN" tee "${SYSTEMD_DIR}/${TIMER_NAME}" >/dev/null <<'TIMER'
+  "$ELEV" tee "${SYSTEMD_DIR}/${TIMER_NAME}" >/dev/null <<'TIMER'
 [Unit]
 Description=Weekly cleanup of orphaned and disabled snaps
 
@@ -84,12 +88,12 @@ WantedBy=timers.target
 TIMER
 
   echo "Reloading systemd and enabling timer..."
-  "$ELEV_BIN" systemctl daemon-reload
-  "$ELEV_BIN" systemctl enable --now "${TIMER_NAME}"
+  "$ELEV" systemctl daemon-reload
+  "$ELEV" systemctl enable --now "${TIMER_NAME}"
 
   echo "Installing man page..."
-  "$ELEV_BIN" install -d -m 0755 "${MAN_DST_DIR}"
-  "$ELEV_BIN" tee "${MAN_PAGE_RAW}" >/dev/null <<'MANPAGE'
+  "$ELEV" install -d -m 0755 "${MAN_DST_DIR}"
+  "$ELEV" tee "${MAN_PAGE_RAW}" >/dev/null <<'MANPAGE'
 .TH ORPHAND_SNAPS 8 "2025-12-09" "orphand_snaps" "System Administration"
 .SH NAME
 orphand_snaps \- remove orphaned and disabled snap packages, with undo support
@@ -151,30 +155,32 @@ Undo all: orphand_snaps undo all
 Mario Herrmann <marioherrmann at posteo.de>
 MANPAGE
 
-  "$ELEV_BIN" gzip -f "${MAN_PAGE_RAW}" || true
-  "$ELEV_BIN" mandb -q || true
+  "$ELEV" gzip -f "${MAN_PAGE_RAW}" || true
+  "$ELEV" mandb -q || true
 
   echo "Installation complete. The timer is active:"
   systemctl list-timers "${TIMER_NAME}" --no-legend || true
 }
 
 uninstall_units() {
-  echo "Disabling and removing systemd timer and service..."
-  "$ELEV_BIN" systemctl disable --now "${TIMER_NAME}" || true
-  "$ELEV_BIN" systemctl disable "${SERVICE_NAME}" 2>/dev/null || true
-  "$ELEV_BIN" systemctl daemon-reload
+  local ELEV; ELEV="$(get_elev)"
 
-  "$ELEV_BIN" rm -f "${SYSTEMD_DIR}/${TIMER_NAME}" "${SYSTEMD_DIR}/${SERVICE_NAME}"
+  echo "Disabling and removing systemd timer and service..."
+  "$ELEV" systemctl disable --now "${TIMER_NAME}" || true
+  "$ELEV" systemctl disable "${SERVICE_NAME}" 2>/dev/null || true
+  "$ELEV" systemctl daemon-reload
+
+  "$ELEV" rm -f "${SYSTEMD_DIR}/${TIMER_NAME}" "${SYSTEMD_DIR}/${SERVICE_NAME}"
 
   echo "Removing ${INSTALL_PATH}..."
-  "$ELEV_BIN" rm -f "${INSTALL_PATH}"
+  "$ELEV" rm -f "${INSTALL_PATH}"
 
   echo "Removing state directory..."
-  "$ELEV_BIN" rm -rf "${STATE_DIR}"
+  "$ELEV" rm -rf "${STATE_DIR}"
 
   echo "Removing man page..."
-  "$ELEV_BIN" rm -f "${MAN_PAGE_GZ}" "${MAN_PAGE_RAW}" || true
-  "$ELEV_BIN" mandb -q || true
+  "$ELEV" rm -f "${MAN_PAGE_GZ}" "${MAN_PAGE_RAW}" || true
+  "$ELEV" mandb -q || true
 
   echo "Uninstallation complete."
 }
@@ -202,22 +208,23 @@ get_snap_channel() {
 # Record removed snaps to the state file (one name per line, de-duplicated)
 record_removed() {
   local removed_list=("$@")
-  "$ELEV_BIN" install -d -m 0755 "${STATE_DIR}"
+  local ELEV; ELEV="$(get_elev)"
+  "$ELEV" install -d -m 0755 "${STATE_DIR}"
   {
     echo "# timestamp: $(date -Iseconds)"
     printf "%s\n" "${removed_list[@]}" | awk 'NF' | sort -u
-  } | "$ELEV_BIN" tee "${STATE_FILE}" >/dev/null
+  } | "$ELEV" tee "${STATE_FILE}" >/dev/null
 }
 
 # Undo helpers
 undo_list() {
   ensure_state
-  if ! "$ELEV_BIN" test -s "${STATE_FILE}"; then
+  if ! test -s "${STATE_FILE}"; then
     echo "No undo information available."
     return 0
   fi
   echo "Snaps removed in last run (name,channel[,revision]):"
-  "$ELEV_BIN" awk 'NR>1 {print $0}' "${STATE_FILE}"
+  awk 'NR>1 {print $0}' "${STATE_FILE}"
 }
 
 # helper: reinstall via refresh if installed, else install; support revision
@@ -227,28 +234,27 @@ reinstall_snap() {
   local revision="${3:-}"
   local is_installed
   is_installed=$(snap list 2>/dev/null | awk -v n="$name" '$1==n {print $1}')
+  local ELEV; ELEV="$(get_elev)"
 
   if [ -n "$revision" ]; then
-    # Prefer refresh with explicit revision
     if [ -z "$is_installed" ]; then
-      "$ELEV_BIN" snap install "$name" || return 1
+      "$ELEV" snap install "$name" || return 1
     fi
-    "$ELEV_BIN" snap refresh "$name" --revision="$revision"
+    "$ELEV" snap refresh "$name" --revision="$revision"
     return $?
   fi
 
-  # No revision recorded: use channel if available
   if [ -n "$is_installed" ]; then
     if [ -n "$channel" ]; then
-      "$ELEV_BIN" snap refresh "$name" --channel "$channel"
+      "$ELEV" snap refresh "$name" --channel "$channel"
     else
-      "$ELEV_BIN" snap refresh "$name"
+      "$ELEV" snap refresh "$name"
     fi
   else
     if [ -n "$channel" ]; then
-      "$ELEV_BIN" snap install "$name" --channel "$channel"
+      "$ELEV" snap install "$name" --channel "$channel"
     else
-      "$ELEV_BIN" snap install "$name"
+      "$ELEV" snap install "$name"
     fi
   fi
 }
@@ -259,35 +265,44 @@ undo_install_one() {
   if [ -z "${snapname}" ]; then
     echo "Usage: ${SCRIPT_NAME} undo snapname"; return 1
   fi
-  if ! "$ELEV_BIN" awk -F, -v s="$snapname" 'NR>1 && $1==s {found=1} END{exit !found}' "${STATE_FILE}" 2>/dev/null; then
+  if ! awk -F, -v s="$snapname" 'NR>1 && $1==s {found=1} END{exit !found}' "${STATE_FILE}" 2>/dev/null; then
     echo "Snap '${snapname}' not found in last removal list."; return 1
   fi
   local channel revision
-  channel=$("$ELEV_BIN" awk -F, -v s="$snapname" 'NR>1 && $1==s {print $2; exit}' "${STATE_FILE}")
-  revision=$("$ELEV_BIN" awk -F, -v s="$snapname" 'NR>1 && $1==s {print $3; exit}' "${STATE_FILE}")
+  channel=$(awk -F, -v s="$snapname" 'NR>1 && $1==s {print $2; exit}' "${STATE_FILE}")
+  revision=$(awk -F, -v s="$snapname" 'NR>1 && $1==s {print $3; exit}' "${STATE_FILE}")
 
   if [ -n "$revision" ]; then
     echo "Restoring '${snapname}' to revision '${revision}'..."
     reinstall_snap "$snapname" "$channel" "$revision"
   else
-    echo "Restoring '${snapname}'"$( [ -n "$channel" ] && echo " on channel '${channel}'" )"..."
+    if [ -n "$channel" ]; then
+      printf "Restoring '%s' on channel '%s'...\n" "$snapname" "$channel"
+    else
+      printf "Restoring '%s'...\n" "$snapname"
+    fi
     reinstall_snap "$snapname" "$channel"
   fi
 }
 
 undo_install_all() {
   ensure_state
-  if ! "$ELEV_BIN" test -f "${STATE_FILE}"; then
+  if ! test -f "${STATE_FILE}"; then
     echo "No undo information available."; return 0
   fi
   echo "Restoring all snaps from last run..."
-  "$ELEV_BIN" awk -F, 'NR>1 {print $1 "|" $2 "|" $3}' "${STATE_FILE}" | while IFS='|' read -r name channel revision; do
+  # shellcheck disable=SC2016
+  awk -F, 'NR>1 {print $1 "|" $2 "|" $3}' "${STATE_FILE}" | while IFS='|' read -r name channel revision; do
     [ -n "$name" ] || continue
     if [ -n "$revision" ]; then
       echo "Restoring '${name}' to revision '${revision}'..."
       reinstall_snap "$name" "$channel" "$revision" || echo "Failed to restore '${name}'."
     else
-      echo "Restoring '${name}'"$( [ -n "$channel" ] && echo " on channel '${channel}'" )"..."
+      if [ -n "$channel" ]; then
+        printf "Restoring '%s' on channel '%s'...\n" "$name" "$channel"
+      else
+        printf "Restoring '%s'...\n" "$name"
+      fi
       reinstall_snap "$name" "$channel" || echo "Failed to restore '${name}'."
     fi
   done
@@ -296,42 +311,43 @@ undo_install_all() {
 # Ensure state directory and initialize header
 begin_run_state() {
   ensure_state
-  "$ELEV_BIN" sh -c "printf '# timestamp: %s\n' \"$(date -Iseconds)\" > '${STATE_FILE}'"
+  local ELEV; ELEV="$(get_elev)"
+  "$ELEV" sh -c "printf '# timestamp: %s\n' \"$(date -Iseconds)\" > '${STATE_FILE}'"
 }
 
 # Append one entry: name,channel[,revision]
 append_removed() {
   local line="$1"
-  # Avoid duplicates within the same run by checking current file content
-  if ! "$ELEV_BIN" grep -Fxq "$line" "${STATE_FILE}" 2>/dev/null; then
-    "$ELEV_BIN" sh -c "printf '%s\n' \"$line\" >> '${STATE_FILE}'"
+  local ELEV; ELEV="$(get_elev)"
+  if ! grep -Fxq "$line" "${STATE_FILE}" 2>/dev/null; then
+    "$ELEV" sh -c "printf '%s\n' \"$line\" >> '${STATE_FILE}'"
   fi
 }
 
 run_cleanup() {
   begin_run_state
-
-  # Remove disabled snaps (exact revision known)
+  # Remove disabled snaps
   while read -r snapname revision; do
     channel=$(get_snap_channel "$snapname")
-    if "$ELEV_BIN" snap remove "$snapname" --revision="$revision"; then
+    local ELEV; ELEV="$(get_elev)"
+    if "$ELEV" snap remove "$snapname" --revision="$revision"; then
       append_removed "${snapname},${channel},${revision}"
     else
       echo "Error removing disabled snap ${snapname}@${revision}"
     fi
   done < <(LANG=C snap list --all | awk "/disabled/{print \$1, \$3}")
 
-  # Orphans (store channel)
+  # Orphans
   orphan=$(snap connections --all | grep -E 'content' | grep -vE 'themes|slot' | awk '$2 == "-" {print $3}' | cut -d: -f 1)
   provider=$(grep "default-provider:" /snap/*/*/meta/snap.yaml 2>/dev/null | awk '{print $NF}' | sort -u)
   if [ -n "${orphan}" ]; then
     for o in ${orphan}; do
-      plug=$(snap connections "$o" | grep -E 'content' | awk '$2!= "-" {print $2}' | cut -d: -f 1 | sort -u)
-      if [[ " ${provider} " =~ " ${o} " ]]; then
-        echo "Snap ${o} is a default provider for ${plug} and cannot be removed."
+      if [[ " ${provider} " == *" ${o} "* ]]; then
+        echo "Snap ${o} is a default provider and cannot be removed."
       else
         channel=$(get_snap_channel "$o")
-        if "$ELEV_BIN" snap remove "${o}"; then
+        local ELEV; ELEV="$(get_elev)"
+        if "$ELEV" snap remove "${o}"; then
           append_removed "${o},${channel}"
         else
           echo "Error removing snap ${o}"
@@ -347,11 +363,12 @@ run_cleanup() {
   base=$(grep "base:" /snap/*/*/meta/snap.yaml 2>/dev/null | awk '{print $NF}' | sort -u)
   for b in ${corephan}; do
     bplug=$(grep "base:" /snap/*/*/meta/snap.yaml 2>/dev/null | cut -d '/' -f 3 | awk '{print $NF}' | sort -u)
-    if [[ " ${base} " =~ " ${b} " ]]; then
+    if [[ " ${base} " == *" ${b} "* ]]; then
       echo "${b} is a base for ${bplug} and cannot be removed."
     else
       channel=$(get_snap_channel "$b")
-      if "$ELEV_BIN" snap remove "${b}"; then
+      local ELEV; ELEV="$(get_elev)"
+      if "$ELEV" snap remove "${b}"; then
         append_removed "${b},${channel}"
       else
         echo "Error removing snap ${b}"
@@ -388,7 +405,7 @@ case "${1:-}" in
         undo_list
         ;;
       all)
-        undo_install_all
+        undo_install_all "$@"
         ;;
       *)
         undo_install_one "${2}"
