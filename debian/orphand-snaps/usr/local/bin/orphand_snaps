@@ -139,7 +139,7 @@ Restore all snaps recorded in the last run.
 .I /etc/systemd/system/orphand-snaps.timer
 .br
 .I /var/lib/orphand_snaps/last_removed.txt
-\- state file (name,channel[,revision])
+\- state file (name,channel,revision)
 .SH EXAMPLES
 Install: OVERRIDE_ELEVATION=doas orphand_snaps install
 .br
@@ -382,8 +382,8 @@ help() {
   echo
   echo "Commands:"
   echo
-  echo "  install               Install the script, systemd service and timer."
-  echo "  uninstall             Remove the installed script and systemd units."
+  echo "  install               Install systemd service and timer."
+  echo "  uninstall             Remove installed systemd units."
   echo "  undo                  List snaps removed in the last run."
   echo "  undo snapname         Restore a single snap removed in the last run."
   echo "  undo all              Restore all snaps removed in the last run."
