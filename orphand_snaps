@@ -139,7 +139,7 @@ Restore all snaps recorded in the last run.
 .I /etc/systemd/system/orphand-snaps.timer
 .br
 .I /var/lib/orphand_snaps/last_removed.txt
-\- state file (name,channel[,revision])
+\- state file (name,channel,revision)
 .SH EXAMPLES
 Install: OVERRIDE_ELEVATION=doas orphand_snaps install
 .br
@@ -223,7 +223,7 @@ undo_list() {
     echo "No undo information available."
     return 0
   fi
-  echo "Snaps removed in last run (name,channel[,revision]):"
+  echo "Snaps removed in last run (name,channel,revision):"
   awk 'NR>1 {print $0}' "${STATE_FILE}"
 }
 
