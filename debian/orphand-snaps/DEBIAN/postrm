@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+
+# Clean up state directory
+if [ "$1" = "remove" ]; then
+    rm -rf /var/lib/orphand_snaps 2>/dev/null || true
+fi
+
+# Reload systemd
+systemctl daemon-reload 2>/dev/null || true
+
+exit 0

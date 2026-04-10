@@ -1,0 +1,18 @@
+Package: orphand-snaps
+Version: 1.0.0
+Architecture: all
+Maintainer: Mario Herrmann <marioherrmann@posteo.de>
+Homepage: https://github.com/Mylinde/orphand_snaps
+Description: Remove orphaned and disabled snap packages
+ A utility that finds and removes orphaned snap packages unless they are
+ default providers or bases. Also removes disabled snaps.
+ .
+ Features:
+ - Systemd service and weekly timer
+ - Automatic elevation via sudo or doas
+ - Undo functionality to restore removed snaps
+Depends: snapd, util-linux
+Suggests: doas, sudo
+Standards-Version: 4.5.0
+Section: utils
+Priority: optional

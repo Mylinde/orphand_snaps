@@ -1,0 +1,13 @@
+#!/bin/bash
+set -e
+
+# Disable timer and service before removal
+if systemctl is-enabled orphand-snaps.timer >/dev/null 2>&1; then
+    systemctl disable --now orphand-snaps.timer || true
+fi
+
+if systemctl is-enabled orphand-snaps.service >/dev/null 2>&1; then
+    systemctl disable orphand-snaps.service 2>/dev/null || true
+fi
+
+exit 0

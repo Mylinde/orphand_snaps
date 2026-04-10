@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e
+
+# Create state directory
+mkdir -p /var/lib/orphand_snaps
+touch /var/lib/orphand_snaps/last_removed.txt
+
+# Make script executable
+chmod 0755 /usr/local/bin/orphand_snaps
+
+# Reload systemd
+systemctl daemon-reload
+
+exit 0
