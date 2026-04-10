@@ -3,9 +3,8 @@
 ## Description
 
 Removes orphaned snap packages unless they are default providers or bases; also removes disabled snaps. Provides:
-- Bash and Fish scripts
-- Installer that places the script in /usr/local/bin
-- systemd service and weekly timer
+- Bash script
+- Installer that installs a systemd service and weekly timer
 - Supports sudo or doas (auto-detect, overridable)
 
 ## How it works
@@ -19,23 +18,12 @@ Removes orphaned snap packages unless they are default providers or bases; also 
 
 ## Usage
 
-1. Save this script as a file (e.g. `orphand_snaps`)
-2. Make the script executable with `chmod +x remove_orphaned_snaps`
-3. Run the script with `./orphand_snaps`
+1. Run the script with 'orphand_snaps`
 
-## optional Installation
+## Optional Installation
 
 Bash:
 ````bash
-# Install (auto-detect doas/sudo; override with set -x OVERRIDE_ELEVATION=doas|sudo)
-orphand_snaps install
-
-# Uninstall
-orphand_snaps uninstall
-`````
-
-Fish:
-````fish
 # Install (auto-detect doas/sudo; override with set -x OVERRIDE_ELEVATION=doas|sudo)
 orphand_snaps install
 

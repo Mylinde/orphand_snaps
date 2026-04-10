@@ -20,16 +20,12 @@ Removes orphaned snap packages unless they are default providers or bases; also 
 
 1. Run the script with 'orphand_snaps`
 
-## optional Installation
+## Optional Installation
 
 Bash:
 ````bash
 # Install (auto-detect doas/sudo; override with set -x OVERRIDE_ELEVATION=doas|sudo)
 orphand_snaps install
-
-# Uninstall
-orphand_snaps uninstall
-`````
 
 # Uninstall
 orphand_snaps uninstall
