@@ -1,0 +1,12 @@
+[Unit]
+Description=Remove orphaned and disabled snaps
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/orphand-snaps
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target

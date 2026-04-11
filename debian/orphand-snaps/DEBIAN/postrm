@@ -1,12 +1,15 @@
 #!/bin/bash
 set -e
 
-# Clean up state directory
+# Clean up state directory on package removal
 if [ "$1" = "remove" ]; then
-    rm -rf /var/lib/orphand_snaps 2>/dev/null || true
+    rm -rf /var/lib/orphand-snaps 2>/dev/null || true
 fi
 
 # Reload systemd
 systemctl daemon-reload 2>/dev/null || true
+
+# Update man page database
+mandb -q 2>/dev/null || true
 
 exit 0

@@ -1,14 +1,24 @@
 #!/bin/bash
-set -e
 
 # Create state directory
-mkdir -p /var/lib/orphand_snaps
-touch /var/lib/orphand_snaps/last_removed.txt
+mkdir -p /var/lib/orphand-snaps 2>/dev/null || true
+touch /var/lib/orphand-snaps/last_removed.txt 2>/dev/null || true
 
 # Make script executable
-chmod 0755 /usr/local/bin/orphand_snaps
+chmod 0755 /usr/local/bin/orphand-snaps 2>/dev/null || true
 
-# Reload systemd
-systemctl daemon-reload
+# Compress man page
+gzip -f /usr/share/man/man8/orphand-snaps.8 2>/dev/null || true
+
+# Reload systemd if available
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl enable --now orphand-snaps.timer 2>/dev/null || true
+fi
+
+# Update man page database if available
+if command -v mandb >/dev/null 2>&1; then
+  mandb -q 2>/dev/null || true
+fi
 
 exit 0

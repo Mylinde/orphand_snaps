@@ -8,7 +8,7 @@ Description: Remove orphaned and disabled snap packages
  default providers or bases. Also removes disabled snaps.
  .
  Features:
- - Bash and Fish shell scripts
+ - Bash shell script
  - Systemd service and weekly timer
  - Automatic elevation via sudo or doas
  - Undo functionality to restore removed snaps

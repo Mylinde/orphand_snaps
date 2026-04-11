@@ -1,0 +1,65 @@
+.TH ORPHAND-SNAPS 8 "2025-12-09" "orphand-snaps" "System Administration"
+.SH NAME
+orphand-snaps \- remove orphaned and disabled snap packages, with undo support
+.SH SYNOPSIS
+.B orphand-snaps
+.RI [ undo " [" SNAPNAME " | all ]" ]
+.SH DESCRIPTION
+The orphand-snaps script:
+- Removes disabled snaps and orphaned content/base snaps if safe to delete.
+- Records removed snaps from the last run in
+.I /var/lib/orphand-snaps/last_removed.txt
+to support undo.
+- Installs a systemd oneshot service and weekly timer (via package installation).
+.PP
+When run as a regular user without arguments, the script attempts to remove snaps 
+using elevated privileges (doas or sudo). The elevation method is auto-detected; 
+override with
+.B OVERRIDE_ELEVATION=doas|sudo
+.
+.SH COMMANDS
+.TP
+.B "orphand-snaps"
+Run the cleanup (removes disabled and orphaned snaps).
+.TP
+.B "undo"
+List snaps removed in the last run.
+.TP
+.B "undo SNAPNAME"
+Restore a single snap (uses snap refresh/install; revision if recorded).
+.TP
+.B "undo all"
+Restore all snaps recorded in the last run.
+.SH FILES
+.I /usr/local/bin/orphand-snaps
+\- installed script
+.br
+.I /etc/systemd/system/orphand-snaps.service
+.br
+.I /etc/systemd/system/orphand-snaps.timer
+.br
+.I /var/lib/orphand-snaps/last_removed.txt
+\- state file (name,channel,revision)
+.SH EXAMPLES
+Manual cleanup: orphand-snaps
+.br
+Undo list: orphand-snaps undo
+.br
+Undo one: orphand-snaps undo core18
+.br
+Undo all: orphand-snaps undo all
+.br
+Override elevation: OVERRIDE_ELEVATION=doas orphand-snaps undo
+.SH NOTES
+The package installs a systemd timer that runs the cleanup automatically once per week.
+.br
+When invoked as a non-root user, the script requires either
+.B sudo
+or
+.B doas
+to be available in PATH.
+.SH SEE ALSO
+.BR snap (8),
+.BR systemctl (1)
+.SH AUTHOR
+Mario Herrmann <mameogdoay at posteo.de>
