@@ -22,7 +22,7 @@ sudo dpkg -i orphand-snaps_*.deb
 
 The installation:
 - Creates the systemd service and weekly timer (automatically enabled)
-- Prepares the state directory `/var/lib/orphand_snaps/` for tracking removed snaps
+- Prepares the state directory `/var/lib/orphand-snaps/` for tracking removed snaps
 - Installs the man page
 
 ## Usage
