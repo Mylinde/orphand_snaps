@@ -2,7 +2,7 @@
 #----------------------------------------------------------------------------------------------------------------------------------------------------------
 # Description: This script finds and removes orphaned snap packages (not default providers or bases) and disabled snaps.
 # Adds undo functionality to list and reinstall snaps removed in the last run.
-# License: MIT. Copyright (c) 2024 Mario Herrmann <mameogdoay at posteo.de>.
+# License: MIT. Copyright (c) 2024 Mario Herrmann <marioherrmann at posteo.de>.
 #----------------------------------------------------------------------------------------------------------------------------------------------------------
 
 set -euo pipefail
